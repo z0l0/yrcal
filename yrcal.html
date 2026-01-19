@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>yrcal — Your Year at a Glance</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Visualize your year. Audit your life. Privacy-first calendar visualization.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ical.js/1.5.0/ical.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+<style>
+@import url('https://fonts.bunny.net/css?family=inter:300,400,500,600|oswald:300,400,500');
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --bg: #fafafa;
+  --text: #111;
+  --muted: #666;
+  --border: #e0e0e0;
+  --weekend: #f5f5f5;
+  --cell-height: 2.2vh;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Header */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.logo {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.logo span { color: var(--muted); font-weight: 300; }
+
+.year-display {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+button {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  background: white;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+button:hover {
+  background: var(--text);
+  color: white;
+  border-color: var(--text);
+}
+
+button.primary {
+  background: var(--text);
+  color: white;
+  border-color: var(--text);
+}
+
+button.primary:hover {
+  background: #333;
+}
+
+input[type="file"] { display: none; }
+
+/* Main Layout */
+main {
+  display: flex;
+  height: calc(100vh - 50px);
+}
+
+/* Sidebar */
+#sidebar {
+  width: 200px;
+  border-right: 1px solid var(--border);
+  padding: 1rem;
+  overflow-y: auto;
+  background: white;
+  display: none;
+  transition: all 0.2s ease;
+}
+
+#sidebar.open { 
+  display: block; 
+}
+
+#sidebar.collapsed {
+  width: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+}
+
+@media (min-width: 900px) {
+  #sidebar { display: block; }
+}
+
+.sidebar-section {
+  margin-bottom: 1.5rem;
+}
+
+.sidebar-section h3 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: 0 0 0.75rem 0;
+}
+
+.category-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  font-size: 0.8rem;
+}
+
+.category-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+.category-color:hover {
+  transform: scale(1.2);
+  border-color: rgba(0,0,0,0.3);
+}
+
+.category-label { flex: 1; }
+
+.category-count {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.category-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.category-item:hover .category-actions {
+  opacity: 1;
+}
+
+.category-actions button {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.65rem;
+  min-width: auto;
+}
+
+.add-category-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border-radius: 4px;
+}
+
+.add-category-form input {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.add-category-form button {
+  font-size: 0.75rem;
+  padding: 0.4rem;
+}
+
+.color-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem;
+}
+
+.color-option {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+  border-color: rgba(0,0,0,0.3);
+}
+
+.color-option.selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+
+.color-option.custom {
+  background: linear-gradient(135deg, #ff0000 0%, #ff7f00 17%, #ffff00 33%, #00ff00 50%, #0000ff 67%, #4b0082 83%, #9400d3 100%);
+  position: relative;
+}
+
+.color-option.custom::after {
+  content: '+';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 3px rgba(0,0,0,0.5);
+}
+
+.edit-category-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.edit-category-modal.hidden { display: none; }
+
+.edit-category-content {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 300px;
+  width: 100%;
+}
+
+.edit-category-content h3 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  font-weight: 400;
+}
+
+/* Legend */
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.legend-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+.legend-charge {
+  border: 2px solid var(--text);
+  background: white;
+}
+
+.legend-drain {
+  background: repeating-linear-gradient(45deg, #ddd, #ddd 2px, white 2px, white 4px);
+  border: 1px solid #ccc;
+}
+
+/* Calendar Container */
+#calendar-container {
+  flex: 1;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+/* Calendar Table - Inspired by neatnik */
+table {
+  width: 100%;
+  min-width: 800px;
+  height: 100%;
+  border-collapse: separate;
+  border-spacing: 0.3em 0;
+  table-layout: fixed;
+}
+
+thead {
+  height: 1.5em;
+}
+
+thead th {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 400;
+  font-size: 1.1vmin;
+  text-transform: uppercase;
+  padding: 0;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1;
+  height: 1.5em;
+  vertical-align: bottom;
+}
+
+tbody td {
+  font-size: 0.9vmin;
+  font-weight: 300;
+  border-bottom: 1px solid var(--border);
+  padding: 0.25vmin;
+  vertical-align: middle;
+  position: relative;
+  height: var(--cell-height);
+  cursor: default;
+}
+
+tbody td:empty {
+  border: none;
+}
+
+.date-num {
+  display: inline-block;
+  width: 1.3em;
+  text-align: right;
+}
+
+.day-letter {
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+  color: var(--muted);
+  margin-left: 0.3em;
+}
+
+.weekend {
+  background: var(--weekend);
+}
+
+/* Event styling */
+td.has-event {
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+td.has-event:hover {
+  transform: scale(1.05);
+  z-index: 10;
+}
+
+.event-bg {
+  position: absolute;
+  inset: 1px;
+  border-radius: 2px;
+  z-index: 0;
+}
+
+td.has-event .date-num,
+td.has-event .day-letter {
+  position: relative;
+  z-index: 1;
+}
+
+.energy-charge .event-bg {
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.3);
+}
+
+.energy-drain .event-bg {
+  background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px) !important;
+}
+
+.event-count {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 0.6vmin;
+  background: rgba(0,0,0,0.5);
+  color: white;
+  padding: 1px 3px;
+  border-radius: 3px;
+  z-index: 2;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-overlay.hidden { display: none; }
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  max-width: 450px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.modal-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 400;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.modal-body {
+  padding: 1rem 1.5rem;
+}
+
+.event-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.event-info h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.event-info p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.event-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.event-actions button {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.7rem;
+}
+
+.btn-active {
+  background: var(--text);
+  color: white;
+}
+
+/* Stats Modal */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  background: var(--bg);
+  padding: 1rem;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.stat-card .number {
+  font-family: 'Oswald', sans-serif;
+  font-size: 2rem;
+  font-weight: 500;
+}
+
+.stat-card .label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.breakdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.breakdown-bar-container {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.breakdown-bar {
+  height: 100%;
+  border-radius: 4px;
+}
+
+.breakdown-count {
+  width: 30px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* Print styles */
+@media print {
+  header, #sidebar, .modal-overlay { display: none !important; }
+  
+  main { height: auto; }
+  
+  #calendar-container {
+    padding: 0;
+    overflow: visible;
+  }
+  
+  table {
+    min-width: 0;
+    height: auto;
+  }
+  
+  tbody td {
+    font-size: 8px !important;
+  }
+  
+  .weekend {
+    background: #d8d8d8 !important;
+  }
+  
+  .event-bg {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  header {
+    padding: 0.75rem 1rem;
+  }
+  
+  .logo { font-size: 1.2rem; }
+  
+  .controls button {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+  }
+  
+  #calendar-container {
+    padding: 0.5rem;
+  }
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--muted);
+  padding: 2rem;
+}
+
+.empty-state h2 {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 400;
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--text);
+}
+
+.empty-state p {
+  margin: 0 0 1.5rem 0;
+  max-width: 300px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:1rem;">
+    <button onclick="app.toggleSidebar()" id="sidebar-toggle" style="padding:0.4rem 0.6rem;">☰</button>
+    <div class="logo">yr<span>cal</span></div>
+    <div class="year-display" id="year-display">2025</div>
+    <select id="month-range" onchange="app.setMonthRange(this.value)" style="font-family:'Inter';font-size:0.75rem;padding:0.4rem;border:1px solid var(--border);border-radius:4px;background:white;">
+      <option value="12">Full Year</option>
+      <option value="6-0">1/2 Year: Jan - Jun</option>
+      <option value="6-6">1/2 Year: Jul - Dec</option>
+      <option value="3-0">1/4 Year: Jan - Mar</option>
+      <option value="3-3">1/4 Year: Apr - Jun</option>
+      <option value="3-6">1/4 Year: Jul - Sep</option>
+      <option value="3-9">1/4 Year: Oct - Dec</option>
+    </select>
+  </div>
+  <div class="controls">
+    <button onclick="app.setYear(app.year - 1)">← Prev</button>
+    <button onclick="app.setYear(app.year + 1)">Next →</button>
+    <button onclick="app.importGoogle()" id="google-btn">Import Google Calendar</button>
+    <button onclick="document.getElementById('ics-input').click()">Import .ICS</button>
+    <input type="file" id="ics-input" multiple accept=".ics">
+    <button onclick="app.clearData()">Clear Data</button>
+    <button onclick="app.showStats()" class="primary">Stats</button>
+    <button onclick="window.print()">Print</button>
+  </div>
+</header>
+
+<main>
+  <div id="sidebar">
+    <div class="sidebar-section">
+      <h3>Categories</h3>
+      <div id="category-list"></div>
+      <button onclick="app.showAddCategory()" style="width:100%;margin-top:0.5rem;font-size:0.75rem;">+ Add Category</button>
+      <div id="add-category-form" class="add-category-form" style="display:none;">
+        <input type="text" id="new-category-name" placeholder="Category name" maxlength="20">
+        <div class="color-picker-grid" id="new-category-colors"></div>
+        <input type="color" id="new-category-custom-color" style="display:none;">
+        <div style="display:flex;gap:0.25rem;">
+          <button onclick="app.addCategory()" class="primary" style="flex:1;">Add</button>
+          <button onclick="app.hideAddCategory()" style="flex:1;">Cancel</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Legend</h3>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-icon legend-charge"></div>
+          <span>Energy charger</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-icon legend-drain"></div>
+          <span>Energy drain</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="sidebar-section">
+      <h3>Options</h3>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;">
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;cursor:pointer;">
+          <input type="checkbox" id="toggle-weekends" checked onchange="app.render()">
+          Highlight weekends
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;cursor:pointer;">
+          <input type="checkbox" id="show-uncategorized-only" onchange="app.toggleUncategorizedFilter()">
+          Show uncategorized only
+        </label>
+      </div>
+      <button onclick="app.showUncategorizedModal()" style="width:100%;font-size:0.75rem;background:var(--text);color:white;">
+        Review Uncategorized
+      </button>
+    </div>
+  </div>
+
+  <div id="calendar-container">
+    <div class="empty-state" id="empty-state">
+      <h2>Your year awaits</h2>
+      <p>Import your calendar to visualize your year at a glance.</p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center;">
+        <button onclick="app.importGoogle()" id="google-btn-empty" class="primary">Import Google Calendar</button>
+        <button onclick="document.getElementById('ics-input').click()">Import .ICS File</button>
+      </div>
+    </div>
+    <table id="calendar" style="display:none;"></table>
+  </div>
+</main>
+
+<!-- Day Modal -->
+<div class="modal-overlay hidden" id="day-modal" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="day-modal-title">Events</h2>
+    </div>
+    <div class="modal-body" id="day-modal-body"></div>
+  </div>
+</div>
+
+<!-- Stats Modal -->
+<div class="modal-overlay hidden" id="stats-modal" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h2>Year in Review</h2>
+    </div>
+    <div class="modal-body" id="stats-modal-body"></div>
+  </div>
+</div>
+
+<!-- Edit Category Modal -->
+<div class="edit-category-modal hidden" id="edit-category-modal" onclick="if(event.target===this)app.hideEditCategory()">
+  <div class="edit-category-content">
+    <h3>Edit Category Color</h3>
+    <div class="color-picker-grid" id="edit-category-colors"></div>
+    <input type="color" id="edit-category-custom-color" style="display:none;">
+    <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+      <button onclick="app.saveEditCategory()" class="primary" style="flex:1;">Save</button>
+      <button onclick="app.hideEditCategory()" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Uncategorized Review Modal -->
+<div class="modal-overlay hidden" id="uncategorized-modal" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+    <div class="modal-header">
+      <h2>Review Uncategorized Events</h2>
+    </div>
+    <div class="modal-body" id="uncategorized-modal-body"></div>
+  </div>
+</div>
+
+<script>
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+const GOOGLE_CLIENT_ID = '934690623052-3ris0n11qnjnlhqrtd9u08uda3mo1a8e.apps.googleusercontent.com';
+const GOOGLE_API_KEY = ''; // Not needed for OAuth flow
+const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events.readonly';
+
+const PRESET_COLORS = [
+  '#e3f2fd', '#f3e5f5', '#fff3e0', '#e8f5e9', '#fce4ec', '#f1f8e9',
+  '#bbdefb', '#ce93d8', '#ffcc80', '#a5d6a7', '#f48fb1', '#dce775',
+  '#90caf9', '#ba68c8', '#ffb74d', '#81c784', '#ec407a', '#cddc39',
+  '#64b5f6', '#ab47bc', '#ffa726', '#66bb6a', '#e91e63', '#c0ca33',
+  '#42a5f5', '#9c27b0', '#ff9800', '#4caf50', '#d81b60', '#afb42b',
+  '#2196f3', '#8e24aa', '#f57c00', '#388e3c', '#c2185b', '#9e9d24'
+];
+
+const DEFAULT_CATEGORIES = [
+  { id: 'travel', label: 'Travel', color: '#ba68c8', keywords: ['flight', 'hotel', 'airbnb', 'trip', 'vacation', 'airport', 'stay at', 'check-in', 'check in', 'resort', 'hostel'] },
+  { id: 'health', label: 'Health', color: '#81c784', keywords: ['gym', 'workout', 'doctor', 'dentist', 'run', 'yoga', 'swim', 'therapy', 'appointment', 'checkup'] },
+  { id: 'social', label: 'Social', color: '#ffb74d', keywords: ['dinner', 'lunch', 'party', 'birthday', 'wedding', 'drinks', 'brunch', 'reservation at', 'reservation for', 'coffee', 'meet', 'hangout', 'gathering'] },
+  { id: 'family', label: 'Family', color: '#f48fb1', keywords: ['family', 'mom', 'dad', 'parent', 'anniversary', 'reunion'] },
+  { id: 'kids', label: 'Kid Activities', color: '#90caf9', keywords: ['kids', 'school', 'son', 'daughter', 'child', 'hockey', 'soccer', 'lesson', 'practice', 'recital', 'pa day', 'daycare'] },
+  { id: 'work', label: 'Work', color: '#b0bec5', keywords: ['meeting', 'standup', 'sync', 'call', 'review', 'interview', '1:1', 'conference', 'presentation', 'deadline'] },
+  { id: 'adventure', label: 'Adventure', color: '#64b5f6', keywords: ['hike', 'ski', 'surf', 'climb', 'camp', 'bike', 'trail', 'mountain', 'outdoor'] },
+];
+
+class YrCal {
+  constructor() {
+    this.year = new Date().getFullYear();
+    this.events = [];
+    this.categories = [...DEFAULT_CATEGORIES];
+    this.googleToken = null;
+    this.sidebarCollapsed = false;
+    this.selectedColor = PRESET_COLORS[0];
+    this.editingCategoryId = null;
+    this.monthRange = { count: 12, start: 0 }; // Show all 12 months by default
+    this.showUncategorizedOnly = false;
+    this.load();
+    this.bindEvents();
+    this.initGoogle();
+    this.render();
+  }
+
+  bindEvents() {
+    document.getElementById('ics-input').addEventListener('change', (e) => this.importICS(e.target.files));
+  }
+
+  initGoogle() {
+    gapi.load('client', () => {
+      gapi.client.init({
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
+      });
+    });
+  }
+
+  async importGoogle() {
+    const btn = document.getElementById('google-btn');
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPES,
+        callback: async (response) => {
+          if (response.access_token) {
+            this.googleToken = response.access_token;
+            await this.fetchGoogleCalendars();
+          }
+        },
+        error_callback: (error) => {
+          console.error('OAuth error:', error);
+          alert('Authentication failed. Try using the .ICS export method instead:\n\n1. Go to Google Calendar settings\n2. Export your calendar\n3. Import the .ics file here');
+          btn.disabled = false;
+          btn.textContent = 'Import Google Calendar';
+        }
+      });
+      
+      // Request access token with popup
+      client.requestAccessToken({ prompt: 'consent' });
+    } catch (e) {
+      console.error('Google auth error:', e);
+      alert('Failed to connect to Google Calendar. This may not work from a local file.\n\nAlternative: Export your calendar as .ICS from Google Calendar and import it here.');
+      btn.disabled = false;
+      btn.textContent = 'Import Google Calendar';
+    }
+  }
+
+  async fetchGoogleCalendars() {
+    const btn = document.getElementById('google-btn');
+    btn.textContent = 'Fetching events...';
+
+    try {
+      gapi.client.setToken({ access_token: this.googleToken });
+      
+      // First, get all calendars
+      let calendars = [];
+      try {
+        const calendarListResponse = await gapi.client.calendar.calendarList.list();
+        calendars = calendarListResponse.result.items || [];
+        console.log(`Found ${calendars.length} calendars:`, calendars.map(c => c.summary));
+      } catch (e) {
+        console.warn('Could not fetch calendar list, falling back to primary only:', e);
+        calendars = [{ id: 'primary', summary: 'Primary' }];
+      }
+      
+      let imported = 0;
+      const years = [2024, 2025, 2026];
+      
+      // Fetch from ALL calendars
+      for (const calendar of calendars) {
+        // Skip calendars that are hidden or not selected
+        if (calendar.selected === false) {
+          console.log(`Skipping unselected calendar: ${calendar.summary}`);
+          continue;
+        }
+        
+        console.log(`Fetching from calendar: ${calendar.summary} (${calendar.id})`);
+        
+        for (const year of years) {
+          const timeMin = new Date(year, 0, 1).toISOString();
+          const timeMax = new Date(year, 11, 31, 23, 59, 59).toISOString();
+          
+          try {
+            // Fetch with pagination
+            let pageToken = null;
+            let pageCount = 0;
+            do {
+              const response = await gapi.client.calendar.events.list({
+                calendarId: calendar.id,
+                timeMin,
+                timeMax,
+                maxResults: 2500,
+                singleEvents: true,
+                orderBy: 'startTime',
+                pageToken: pageToken
+              });
+
+              const items = response.result.items || [];
+              console.log(`  Page ${++pageCount}: Got ${items.length} events from ${calendar.summary} for ${year}`);
+              
+              items.forEach(item => {
+                // Skip declined events
+                if (item.status === 'cancelled') return;
+                
+                const start = item.start.dateTime ? new Date(item.start.dateTime) : new Date(item.start.date);
+                let end = item.end.dateTime ? new Date(item.end.dateTime) : new Date(item.end.date);
+                
+                // Fix all-day exclusive end (Google Calendar's end date is exclusive)
+                if (item.start.date && !item.start.dateTime) {
+                  end = new Date(end);
+                  end.setDate(end.getDate() - 1);
+                }
+                
+                this.events.push({
+                  id: Math.random().toString(36).slice(2, 11),
+                  title: item.summary || 'Untitled',
+                  start,
+                  end,
+                  categoryId: this.categorize(item.summary),
+                  energy: null,
+                  hidden: false,
+                  calendarName: calendar.summary
+                });
+                imported++;
+              });
+              
+              pageToken = response.result.nextPageToken;
+            } while (pageToken);
+          } catch (e) {
+            console.error(`Error fetching from ${calendar.summary}:`, e);
+          }
+        }
+      }
+
+      this.save();
+      this.render();
+      alert(`Imported ${imported} events from ${calendars.length} calendar(s). Check console for details.`);
+      btn.textContent = 'Import Google Calendar';
+      btn.disabled = false;
+    } catch (e) {
+      console.error('Fetch error:', e);
+      alert('Failed to fetch calendar events: ' + e.message);
+      btn.textContent = 'Import Google Calendar';
+      btn.disabled = false;
+    }
+  }
+
+  setYear(y) {
+    this.year = y;
+    document.getElementById('year-display').textContent = y;
+    this.render();
+  }
+
+  setMonthRange(value) {
+    if (value === '12') {
+      this.monthRange = { count: 12, start: 0 };
+    } else {
+      const [count, start] = value.split('-').map(Number);
+      this.monthRange = { count, start };
+    }
+    this.render();
+  }
+
+  toggleSidebar() {
+    this.sidebarCollapsed = !this.sidebarCollapsed;
+    const sidebar = document.getElementById('sidebar');
+    if (this.sidebarCollapsed) {
+      sidebar.classList.add('collapsed');
+    } else {
+      sidebar.classList.remove('collapsed');
+    }
+    this.save();
+  }
+
+  // ICS Import
+  async importICS(files) {
+    let imported = 0;
+    for (const file of files) {
+      const text = await file.text();
+      try {
+        const jcal = ICAL.parse(text);
+        const comp = new ICAL.Component(jcal);
+        const vevents = comp.getAllSubcomponents('vevent');
+
+        vevents.forEach(ve => {
+          const event = new ICAL.Event(ve);
+          if (event.isRecurring()) {
+            const iter = event.iterator();
+            let next, count = 0;
+            while ((next = iter.next()) && count < 500) {
+              const d = next.toJSDate();
+              if (d.getFullYear() >= 2020 && d.getFullYear() <= 2030) {
+                this.events.push(this.createEvent(event, d));
+                imported++;
+              }
+              if (d.getFullYear() > 2030) break;
+              count++;
+            }
+          } else {
+            const d = event.startDate.toJSDate();
+            if (d.getFullYear() >= 2020 && d.getFullYear() <= 2030) {
+              this.events.push(this.createEvent(event, d));
+              imported++;
+            }
+          }
+        });
+      } catch (e) {
+        console.error('Parse error:', e);
+      }
+    }
+    this.save();
+    this.render();
+    alert(`Imported ${imported} events`);
+  }
+
+  createEvent(icalEvent, start) {
+    let end = new Date(start);
+    if (icalEvent.duration) {
+      end.setSeconds(end.getSeconds() + icalEvent.duration.toSeconds());
+    } else if (icalEvent.endDate) {
+      end = icalEvent.endDate.toJSDate();
+    }
+    // Fix all-day exclusive end
+    if (icalEvent.startDate.isDate && end > start) {
+      end.setDate(end.getDate() - 1);
+    }
+    return {
+      id: Math.random().toString(36).slice(2, 11),
+      title: icalEvent.summary || 'Untitled',
+      start,
+      end,
+      categoryId: this.categorize(icalEvent.summary),
+      energy: null,
+      hidden: false
+    };
+  }
+
+  categorize(title) {
+    if (!title) return null;
+    const t = title.toLowerCase();
+    for (const cat of this.categories) {
+      if (cat.keywords.some(k => t.includes(k))) return cat.id;
+    }
+    return null;
+  }
+
+  getEventsForDate(date) {
+    const check = date.toISOString().slice(0, 10);
+    let events = this.events.filter(e => {
+      if (e.hidden) return false;
+      const s = e.start.toISOString().slice(0, 10);
+      const end = e.end.toISOString().slice(0, 10);
+      return check >= s && check <= end;
+    });
+    
+    // Filter by uncategorized if enabled
+    if (this.showUncategorizedOnly) {
+      events = events.filter(e => !e.categoryId);
+    }
+    
+    return events;
+  }
+
+  toggleUncategorizedFilter() {
+    this.showUncategorizedOnly = document.getElementById('show-uncategorized-only').checked;
+    this.render();
+  }
+
+  showUncategorizedModal() {
+    const uncategorized = this.events.filter(e => !e.hidden && !e.categoryId && e.start.getFullYear() === this.year);
+    
+    // Group by title
+    const grouped = {};
+    uncategorized.forEach(e => {
+      if (!grouped[e.title]) {
+        grouped[e.title] = [];
+      }
+      grouped[e.title].push(e);
+    });
+    
+    const body = document.getElementById('uncategorized-modal-body');
+    
+    if (Object.keys(grouped).length === 0) {
+      body.innerHTML = '<p style="text-align:center;color:var(--muted);padding:2rem;">All events are categorized! 🎉</p>';
+    } else {
+      body.innerHTML = Object.entries(grouped).map(([title, events]) => `
+        <div style="border:1px solid var(--border);border-radius:6px;padding:1rem;margin-bottom:1rem;">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.75rem;">
+            <div>
+              <h4 style="margin:0 0 0.25rem 0;font-size:0.95rem;">${title}</h4>
+              <p style="margin:0;font-size:0.75rem;color:var(--muted);">${events.length} occurrence${events.length > 1 ? 's' : ''}</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:0.25rem;flex-wrap:wrap;">
+            ${this.categories.map(c => `
+              <button 
+                onclick="app.bulkCategorizeFromModal('${title.replace(/'/g, "\\'")}','${c.id}')"
+                style="padding:0.3rem 0.6rem;font-size:0.75rem;background:${c.color};border:1px solid ${c.color};color:#000;border-radius:4px;"
+              >${c.label}</button>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    document.getElementById('uncategorized-modal').classList.remove('hidden');
+  }
+
+  bulkCategorizeFromModal(title, categoryId) {
+    let count = 0;
+    this.events.forEach(e => {
+      if (e.title === title && !e.hidden && !e.categoryId) {
+        e.categoryId = categoryId;
+        count++;
+      }
+    });
+    
+    this.save();
+    this.render();
+    
+    // Refresh the modal
+    this.showUncategorizedModal();
+  }
+
+  daysInMonth(month) {
+    return new Date(this.year, month + 1, 0).getDate();
+  }
+
+  render() {
+    const hasEvents = this.events.some(e => {
+      const y = e.start.getFullYear();
+      return y === this.year && !e.hidden;
+    });
+
+    document.getElementById('empty-state').style.display = hasEvents ? 'none' : 'flex';
+    document.getElementById('calendar').style.display = hasEvents ? 'table' : 'none';
+
+    if (!hasEvents) {
+      this.renderCategories();
+      return;
+    }
+
+    const table = document.getElementById('calendar');
+    const showWeekends = document.getElementById('toggle-weekends').checked;
+
+    const startMonth = this.monthRange.start;
+    const endMonth = this.monthRange.start + this.monthRange.count;
+
+    let html = '<thead><tr>';
+    for (let month = startMonth; month < endMonth; month++) {
+      html += `<th>${MONTHS[month]}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+
+    for (let day = 1; day <= 31; day++) {
+      html += '<tr>';
+      for (let month = startMonth; month < endMonth; month++) {
+        if (day > this.daysInMonth(month)) {
+          html += '<td></td>';
+          continue;
+        }
+
+        const date = new Date(this.year, month, day);
+        const dow = date.getDay();
+        const isWeekend = dow === 0 || dow === 6;
+        const events = this.getEventsForDate(date);
+        const topEvent = events.sort((a, b) => {
+          const ai = this.categories.findIndex(c => c.id === a.categoryId);
+          const bi = this.categories.findIndex(c => c.id === b.categoryId);
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        })[0];
+
+        let classes = [];
+        if (showWeekends && isWeekend) classes.push('weekend');
+        if (events.length > 0) classes.push('has-event');
+        if (topEvent?.energy === 'charge') classes.push('energy-charge');
+        if (topEvent?.energy === 'drain') classes.push('energy-drain');
+
+        const cat = topEvent ? this.categories.find(c => c.id === topEvent.categoryId) : null;
+        const bg = cat ? cat.color : '#e0e0e0';
+
+        html += `<td class="${classes.join(' ')}" ${events.length ? `onclick="app.openDay(${this.year},${month},${day})"` : ''}>`;
+        
+        if (events.length > 0) {
+          html += `<div class="event-bg" style="background:${bg}"></div>`;
+          if (events.length > 1) {
+            html += `<span class="event-count">+${events.length - 1}</span>`;
+          }
+        }
+        
+        html += `<span class="date-num">${day}</span>`;
+        html += `<span class="day-letter">${DAYS[dow]}</span>`;
+        html += '</td>';
+      }
+      html += '</tr>';
+    }
+
+    html += '</tbody>';
+    table.innerHTML = html;
+    this.renderCategories();
+  }
+
+  renderCategories() {
+    const list = document.getElementById('category-list');
+    const counts = {};
+    this.categories.forEach(c => counts[c.id] = 0);
+
+    this.events.forEach(e => {
+      if (!e.hidden && e.categoryId && e.start.getFullYear() === this.year) {
+        counts[e.categoryId] = (counts[e.categoryId] || 0) + 1;
+      }
+    });
+
+    list.innerHTML = this.categories.map(cat => `
+      <div class="category-item">
+        <div class="category-color" style="background:${cat.color}" 
+             onclick="app.editCategoryColor('${cat.id}')" 
+             title="Click to change color"></div>
+        <span class="category-label">${cat.label}</span>
+        <span class="category-count">${counts[cat.id] || 0}</span>
+        <div class="category-actions">
+          <button onclick="app.deleteCategory('${cat.id}')" title="Delete category">×</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  renderColorPicker(containerId, selectedColor) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = PRESET_COLORS.map(color => `
+      <div class="color-option ${color === selectedColor ? 'selected' : ''}" 
+           style="background:${color}" 
+           onclick="app.selectColor('${color}', '${containerId}')"></div>
+    `).join('') + `
+      <div class="color-option custom ${!PRESET_COLORS.includes(selectedColor) ? 'selected' : ''}" 
+           onclick="app.selectCustomColor('${containerId}')"></div>
+    `;
+  }
+
+  selectColor(color, containerId) {
+    this.selectedColor = color;
+    this.renderColorPicker(containerId, color);
+  }
+
+  selectCustomColor(containerId) {
+    const inputId = containerId.replace('-colors', '-custom-color');
+    const input = document.getElementById(inputId);
+    input.click();
+    input.onchange = () => {
+      this.selectedColor = input.value;
+      this.renderColorPicker(containerId, input.value);
+    };
+  }
+
+  showAddCategory() {
+    this.selectedColor = PRESET_COLORS[0];
+    document.getElementById('add-category-form').style.display = 'flex';
+    this.renderColorPicker('new-category-colors', this.selectedColor);
+    document.getElementById('new-category-name').focus();
+  }
+
+  hideAddCategory() {
+    document.getElementById('add-category-form').style.display = 'none';
+    document.getElementById('new-category-name').value = '';
+  }
+
+  addCategory() {
+    const name = document.getElementById('new-category-name').value.trim();
+    
+    if (!name) {
+      alert('Please enter a category name');
+      return;
+    }
+
+    const id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    
+    if (this.categories.find(c => c.id === id)) {
+      alert('A category with this name already exists');
+      return;
+    }
+
+    this.categories.push({
+      id,
+      label: name,
+      color: this.selectedColor,
+      keywords: []
+    });
+
+    this.save();
+    this.render();
+    this.hideAddCategory();
+  }
+
+  editCategoryColor(id) {
+    this.editingCategoryId = id;
+    const cat = this.categories.find(c => c.id === id);
+    if (!cat) return;
+    
+    this.selectedColor = cat.color;
+    this.renderColorPicker('edit-category-colors', this.selectedColor);
+    document.getElementById('edit-category-modal').classList.remove('hidden');
+  }
+
+  hideEditCategory() {
+    document.getElementById('edit-category-modal').classList.add('hidden');
+    this.editingCategoryId = null;
+  }
+
+  saveEditCategory() {
+    if (!this.editingCategoryId) return;
+    
+    const cat = this.categories.find(c => c.id === this.editingCategoryId);
+    if (cat) {
+      cat.color = this.selectedColor;
+      this.save();
+      this.render();
+    }
+    
+    this.hideEditCategory();
+  }
+
+  deleteCategory(id) {
+    if (!confirm('Delete this category? Events will become uncategorized.')) return;
+    
+    this.categories = this.categories.filter(c => c.id !== id);
+    this.events.forEach(e => {
+      if (e.categoryId === id) e.categoryId = null;
+    });
+    
+    this.save();
+    this.render();
+  }
+
+  openDay(year, month, day) {
+    const date = new Date(year, month, day);
+    const events = this.getEventsForDate(date);
+    
+    document.getElementById('day-modal-title').textContent = date.toLocaleDateString('en-US', { 
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
+    });
+
+    const body = document.getElementById('day-modal-body');
+    body.innerHTML = events.map(e => {
+      const cat = this.categories.find(c => c.id === e.categoryId);
+      const sameNameCount = this.events.filter(ev => ev.title === e.title && !ev.hidden).length;
+      
+      return `
+        <div class="event-item" style="flex-direction:column;align-items:stretch;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+            <div class="event-info">
+              <h4>${e.title}</h4>
+              <p>${cat ? cat.label : 'Uncategorized'} · ${e.energy === 'charge' ? '⚡️ Charger' : e.energy === 'drain' ? '🪫 Drain' : 'No energy set'}
+              ${sameNameCount > 1 ? ` · <strong>${sameNameCount} occurrences</strong>` : ''}</p>
+            </div>
+            <div class="event-actions">
+              <button class="${e.energy === 'charge' ? 'btn-active' : ''}" onclick="app.setEnergy('${e.id}','charge')">⚡️</button>
+              <button class="${e.energy === 'drain' ? 'btn-active' : ''}" onclick="app.setEnergy('${e.id}','drain')">🪫</button>
+              <button onclick="app.hideEvent('${e.id}')" style="color:#c00">✕</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:0.25rem;flex-wrap:wrap;">
+            ${this.categories.map(c => `
+              <button 
+                class="${e.categoryId === c.id ? 'btn-active' : ''}" 
+                onclick="app.setCategory('${e.id}','${c.id}')"
+                style="padding:0.2rem 0.5rem;font-size:0.7rem;${e.categoryId === c.id ? `background:${c.color};border-color:${c.color};color:#000;` : ''}"
+              >${c.label}</button>
+            `).join('')}
+          </div>
+          ${sameNameCount > 1 ? `
+            <div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid var(--border);display:flex;gap:0.5rem;">
+              <button onclick="app.bulkSetCategory('${e.title.replace(/'/g, "\\'")}','${e.categoryId || ''}')" style="flex:1;font-size:0.7rem;background:var(--text);color:white;">
+                Apply category to all ${sameNameCount}
+              </button>
+              <button onclick="app.bulkSetEnergy('${e.title.replace(/'/g, "\\'")}','${e.energy || 'neutral'}')" style="flex:1;font-size:0.7rem;background:var(--text);color:white;">
+                Apply energy to all ${sameNameCount}
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('day-modal').classList.remove('hidden');
+  }
+
+  setEnergy(id, energy) {
+    const e = this.events.find(ev => ev.id === id);
+    if (e) {
+      e.energy = e.energy === energy ? null : energy;
+      this.save();
+      this.render();
+      // Re-open modal to refresh
+      const date = e.start;
+      this.openDay(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+  }
+
+  setCategory(id, categoryId) {
+    const e = this.events.find(ev => ev.id === id);
+    if (e) {
+      e.categoryId = e.categoryId === categoryId ? null : categoryId;
+      this.save();
+      this.render();
+      // Re-open modal to refresh
+      const date = e.start;
+      this.openDay(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+  }
+
+  bulkSetCategory(title, currentCategoryId) {
+    const count = this.events.filter(e => e.title === title && !e.hidden).length;
+    if (!confirm(`Apply the current category to all ${count} "${title}" events?`)) return;
+    
+    this.events.forEach(e => {
+      if (e.title === title && !e.hidden) {
+        e.categoryId = currentCategoryId || null;
+      }
+    });
+    
+    this.save();
+    this.render();
+    document.getElementById('day-modal').classList.add('hidden');
+  }
+
+  bulkSetEnergy(title, currentEnergy) {
+    const count = this.events.filter(e => e.title === title && !e.hidden).length;
+    if (!confirm(`Apply the current energy setting to all ${count} "${title}" events?`)) return;
+    
+    this.events.forEach(e => {
+      if (e.title === title && !e.hidden) {
+        e.energy = currentEnergy === 'neutral' ? null : currentEnergy;
+      }
+    });
+    
+    this.save();
+    this.render();
+    document.getElementById('day-modal').classList.add('hidden');
+  }
+
+  hideEvent(id) {
+    const e = this.events.find(ev => ev.id === id);
+    if (e) {
+      e.hidden = true;
+      this.save();
+      this.render();
+      document.getElementById('day-modal').classList.add('hidden');
+    }
+  }
+
+  clearData() {
+    if (confirm('Clear all events and start fresh? This cannot be undone.')) {
+      localStorage.removeItem('yrcal');
+      this.events = [];
+      this.categories = [...DEFAULT_CATEGORIES];
+      this.googleToken = null;
+      this.render();
+      alert('All data cleared. You can now re-import your calendar.');
+    }
+  }
+
+  showStats() {
+    const yearEvents = this.events.filter(e => !e.hidden && e.start.getFullYear() === this.year);
+    const total = yearEvents.length;
+    const drains = yearEvents.filter(e => e.energy === 'drain').length;
+    const charges = yearEvents.filter(e => e.energy === 'charge').length;
+
+    const counts = {};
+    this.categories.forEach(c => counts[c.id] = 0);
+    yearEvents.forEach(e => {
+      if (e.categoryId) counts[e.categoryId]++;
+    });
+
+    const sorted = this.categories
+      .map(c => ({ ...c, count: counts[c.id] }))
+      .filter(c => c.count > 0)
+      .sort((a, b) => b.count - a.count);
+
+    const maxCount = Math.max(...sorted.map(c => c.count), 1);
+
+    const body = document.getElementById('stats-modal-body');
+    body.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="number">${total}</div>
+          <div class="label">Total Events</div>
+        </div>
+        <div class="stat-card">
+          <div class="number">${charges}</div>
+          <div class="label">⚡️ Chargers</div>
+        </div>
+        <div class="stat-card">
+          <div class="number">${drains}</div>
+          <div class="label">🪫 Drains</div>
+        </div>
+        <div class="stat-card">
+          <div class="number">${sorted[0]?.label || '—'}</div>
+          <div class="label">Top Category</div>
+        </div>
+      </div>
+      <h3 style="font-family:'Oswald';font-size:0.8rem;text-transform:uppercase;color:var(--muted);margin:0 0 1rem 0;">Breakdown</h3>
+      ${sorted.map(c => `
+        <div class="breakdown-item">
+          <div class="category-color" style="background:${c.color}"></div>
+          <span style="width:70px">${c.label}</span>
+          <div class="breakdown-bar-container">
+            <div class="breakdown-bar" style="width:${(c.count/maxCount)*100}%;background:${c.color}"></div>
+          </div>
+          <span class="breakdown-count">${c.count}</span>
+        </div>
+      `).join('')}
+    `;
+
+    document.getElementById('stats-modal').classList.remove('hidden');
+  }
+
+  save() {
+    const data = {
+      events: this.events.map(e => ({
+        ...e,
+        start: e.start.toISOString(),
+        end: e.end.toISOString()
+      })),
+      categories: this.categories,
+      year: this.year,
+      sidebarCollapsed: this.sidebarCollapsed
+    };
+    localStorage.setItem('yrcal', JSON.stringify(data));
+  }
+
+  load() {
+    const raw = localStorage.getItem('yrcal');
+    if (raw) {
+      const data = JSON.parse(raw);
+      this.events = data.events.map(e => ({
+        ...e,
+        start: new Date(e.start),
+        end: new Date(e.end)
+      }));
+      this.categories = data.categories || DEFAULT_CATEGORIES;
+      this.year = data.year || new Date().getFullYear();
+      this.sidebarCollapsed = data.sidebarCollapsed || false;
+      document.getElementById('year-display').textContent = this.year;
+      
+      // Apply sidebar state
+      if (this.sidebarCollapsed) {
+        document.getElementById('sidebar').classList.add('collapsed');
+      }
+    }
+  }
+}
+
+const app = new YrCal();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Sensitive files - DO NOT COMMIT
+client_secret_*.json
+!client_secret_EXAMPLE.json
+*.json.secret
+
+# Development/test files
+ai_studio_code*.html
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.log
